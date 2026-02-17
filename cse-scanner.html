@@ -158,9 +158,10 @@ LMF.N0000</textarea>
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
     // Use local proxy when on localhost to avoid CORS (run: python3 serve-scanner.py)
+    // Local: use Python proxy. Vercel (or same origin): use /api/chartData serverless proxy.
     const CHART_API = (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost")
       ? "/api/chartData"
-      : "https://www.cse.lk/api/chartData";
+      : window.location.origin + "/api/chartData";
 
     async function cseChartData(symbol) {
       const res = await fetch(CHART_API, {

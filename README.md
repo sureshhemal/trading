@@ -1,6 +1,8 @@
 # CSE MA50 Breakout Scanner
 
-Run the [scanner](cse-scanner.html) via `python3 serve-scanner.py` then open **http://127.0.0.1:8765/** — and follow the system rules below.
+**Local:** Run `python3 serve-scanner.py` then open **http://127.0.0.1:8765/**.
+
+**Vercel:** Deploy with [Vercel](https://vercel.com) (connect the repo or `vercel` CLI). The `api/chartData` serverless function proxies CSE so the scanner works in the browser. Root `/` serves the scanner.
 
 ---
 
