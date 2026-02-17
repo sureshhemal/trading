@@ -18,9 +18,9 @@ from typing import Dict, List, Optional, Tuple
 from data.cse_client import fetch_for_symbol, ma50_from_closes
 
 # Trading system parameters
-STOP_LOSS_BUFFER = 0.99  # Place stop 1% below swing low for safety margin
-TARGET_MULTIPLIER = 2    # 2R (risk-to-reward ratio) target
-RISK_PER_TRADE = 0.01    # Risk 1% of capital per trade
+STOP_LOSS_MULTIPLIER = 0.99  # Place stop 1% below swing low (multiply swing_low by 0.99)
+TARGET_MULTIPLIER = 2        # 2R (risk-to-reward ratio) target
+RISK_PER_TRADE = 0.01        # Risk 1% of capital per trade
 
 
 def calculate_ma50_slope(closes: List[float], ma50_window: int = 50) -> Optional[bool]:
@@ -188,10 +188,13 @@ def analyze_stock(
                     data_from_api = True
             
             # If chart data available, extract OHLCV
+            # TODO: Parse chart data when API response format is documented
+            # Expected fields: dates, opens, highs, lows, closes, volumes
+            # This would enable automatic calculation of MA50, resistance, etc.
             if api_data and 'chart' in api_data and api_data['chart']:
-                # Parse chart data (format depends on API)
-                # This is placeholder logic
-                pass
+                chart_data = api_data['chart']
+                # Future implementation: extract OHLCV arrays from chart_data
+                # and populate closes, highs, lows, volumes lists
                 
         except Exception as e:
             print(f"Could not fetch data from API: {e}")
@@ -332,7 +335,7 @@ def analyze_stock(
     result['prices']['entry'] = entry_price
     
     # Stop loss (slightly below swing low for safety margin)
-    stop_loss = swing_low * STOP_LOSS_BUFFER
+    stop_loss = swing_low * STOP_LOSS_MULTIPLIER
     result['prices']['stop'] = stop_loss
     
     # Risk per share
