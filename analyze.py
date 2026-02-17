@@ -255,8 +255,7 @@ def analyze_stock(
     print(f"\n1. Is price above MA50?")
     print(f"   Current Price: {current_price:.2f}")
     print(f"   MA50: {ma50_value:.2f}")
-    result_text = f"   Result: YES ✓" if condition1 else f"   Result: NO ✗"
-    print(result_text)
+    print(f"   Result: {'YES ✓' if condition1 else 'NO ✗'}")
     
     # 2. Is MA50 sloping upward?
     # If we have historical data, calculate; otherwise use provided value or ask user
@@ -326,8 +325,10 @@ def analyze_stock(
     print("\nAll conditions met! Calculating entry, stop, and target...")
     print("="*60)
     
-    # Entry price (breakout level or current price)
-    entry_price = max(current_price, resistance_level)
+    # Entry price - For a breakout trade, entry is at the resistance level (breakout point)
+    # If current price is already above resistance, use current price as it indicates
+    # we're entering after the breakout has occurred
+    entry_price = current_price if current_price > resistance_level else resistance_level
     result['prices']['entry'] = entry_price
     
     # Stop loss (slightly below swing low for safety margin)
@@ -336,6 +337,16 @@ def analyze_stock(
     
     # Risk per share
     risk_per_share = entry_price - stop_loss
+    
+    # Validate risk per share is positive
+    if risk_per_share <= 0:
+        result['verdict'] = 'SKIP'
+        result['reason'] = f'Invalid setup: Entry ({entry_price:.2f}) must be higher than stop loss ({stop_loss:.2f})'
+        print(f"\nVERDICT: SKIP THIS TRADE")
+        print(f"Reason: {result['reason']}")
+        print("="*60)
+        return result
+    
     result['prices']['risk_per_share'] = risk_per_share
     
     # Target (2R - twice the risk per share)
