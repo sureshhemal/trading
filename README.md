@@ -12,6 +12,10 @@ To analyze a stock using the MA50 + Breakout system:
 python analyze.py SYMBOL [--capital AMOUNT] [options]
 ```
 
+### Example Analysis: SAMP.N0000
+
+See [SAMP-N0000-ANALYSIS.md](./SAMP-N0000-ANALYSIS.md) for a complete walkthrough of analyzing SAMP.N0000.
+
 ### Example with all data provided:
 ```bash
 python analyze.py SAMP.N0000 \
@@ -33,6 +37,8 @@ python analyze.py SAMP.N0000 --capital 100000
 The script will output:
 - **Valid trade** with entry, stop, target, position size, and risk details
 - **Skip** with specific reasons if any condition fails
+
+For more examples, see [EXAMPLES.md](./EXAMPLES.md).
 
 ## Prompts
 
