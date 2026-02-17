@@ -17,6 +17,11 @@ import argparse
 from typing import Dict, List, Optional, Tuple
 from data.cse_client import fetch_for_symbol, ma50_from_closes
 
+# Trading system parameters
+STOP_LOSS_BUFFER = 0.99  # Place stop 1% below swing low for safety margin
+TARGET_MULTIPLIER = 2    # 2R (risk-to-reward ratio) target
+RISK_PER_TRADE = 0.01    # Risk 1% of capital per trade
+
 
 def calculate_ma50_slope(closes: List[float], ma50_window: int = 50) -> Optional[bool]:
     """
@@ -250,7 +255,8 @@ def analyze_stock(
     print(f"\n1. Is price above MA50?")
     print(f"   Current Price: {current_price:.2f}")
     print(f"   MA50: {ma50_value:.2f}")
-    print(f"   Result: {'YES' if condition1 else 'NO'} ✓" if condition1 else f"   Result: NO ✗")
+    result_text = f"   Result: YES ✓" if condition1 else f"   Result: NO ✗"
+    print(result_text)
     
     # 2. Is MA50 sloping upward?
     # If we have historical data, calculate; otherwise use provided value or ask user
@@ -324,16 +330,16 @@ def analyze_stock(
     entry_price = max(current_price, resistance_level)
     result['prices']['entry'] = entry_price
     
-    # Stop loss (slightly below swing low)
-    stop_loss = swing_low * 0.99  # 1% below swing low
+    # Stop loss (slightly below swing low for safety margin)
+    stop_loss = swing_low * STOP_LOSS_BUFFER
     result['prices']['stop'] = stop_loss
     
     # Risk per share
     risk_per_share = entry_price - stop_loss
     result['prices']['risk_per_share'] = risk_per_share
     
-    # Target (2R)
-    target_price = entry_price + (2 * risk_per_share)
+    # Target (2R - twice the risk per share)
+    target_price = entry_price + (TARGET_MULTIPLIER * risk_per_share)
     result['prices']['target'] = target_price
     
     print(f"\nENTRY, STOP, TARGET:")
@@ -349,7 +355,7 @@ def analyze_stock(
     print("="*60)
     
     # 1% risk amount
-    risk_amount = capital * 0.01
+    risk_amount = capital * RISK_PER_TRADE
     result['position']['capital'] = capital
     result['position']['risk_amount'] = risk_amount
     
