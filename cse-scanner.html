@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CSE Auto Scanner — MA50 + Breakout</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --red: #f85149;
+      --yellow: #d29922;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 1.5rem;
+      line-height: 1.5;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+    .sub { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    label { display: block; margin-bottom: 0.35rem; font-size: 0.875rem; color: var(--muted); }
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 0.6rem;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: ui-monospace, monospace;
+      font-size: 0.8125rem;
+      resize: vertical;
+    }
+    textarea::placeholder { color: var(--muted); }
+    .row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem; }
+    .row > * { flex: 0 0 auto; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    #status { font-size: 0.875rem; color: var(--muted); margin-left: 0.5rem; }
+    #results { margin-top: 1rem; }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; }
+    tr:hover { background: rgba(255,255,255,0.03); }
+    .yes { color: var(--green); }
+    .no { color: var(--red); }
+    .score { font-weight: 600; }
+    .err { color: var(--red); font-size: 0.875rem; margin-top: 0.5rem; }
+    .loading { color: var(--yellow); }
+    .tip { font-size: 0.8rem; color: var(--yellow); margin-top: -0.5rem; }
+    .col-help { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; }
+    .col-help summary { cursor: pointer; user-select: none; }
+    .col-help dl { margin: 0.5rem 0 0 0; }
+    .col-help dt { font-weight: 600; color: var(--text); margin-top: 0.35rem; }
+    .col-help dd { margin-left: 0; margin-bottom: 0.2rem; }
+  </style>
+</head>
+<body>
+  <h1>CSE Auto Scanner</h1>
+  <p class="sub">Price &gt; MA50, MA50 rising, near resistance, volume spike. Uses <code>cse.lk/api/chartData</code> via local proxy (no CORS).</p>
+  <p class="sub tip">To avoid CORS: run <code>python3 serve-scanner.py</code> and open <code>http://127.0.0.1:8765/</code></p>
+
+  <details class="panel col-help" open>
+    <summary>What each column means (click to collapse)</summary>
+    <dl>
+      <dt>Symbol</dt>
+      <dd>The stock ticker on CSE (e.g. SAMP.N0000).</dd>
+      <dt>Close</dt>
+      <dd>Latest closing price (last trading day). Body close, not wick.</dd>
+      <dt>MA50</dt>
+      <dd>50-day moving average. We only care about stocks above this (uptrend).</dd>
+      <dt>Above MA</dt>
+      <dd>Is price above MA50? Yes = trend filter passed. No = skip the stock.</dd>
+      <dt>MA up</dt>
+      <dd>Is the MA50 line sloping upward? Yes = trend is up. No = skip.</dd>
+      <dt>Resistance</dt>
+      <dd>Highest high from the last ~2–3 months (today is not included). Price must close above this for a valid breakout.</dd>
+      <dt>Breakout</dt>
+      <dd>Did price close above resistance in the last 1–3 candles? Yes = fresh breakout. No = not a breakout yet.</dd>
+      <dt>Near res</dt>
+      <dd>Is price close to that resistance level? Helps find stocks to WATCH (might break out soon).</dd>
+      <dt>Vol spike</dt>
+      <dd>Is breakout-day volume higher than the average of the last 20 days (today excluded)? Breakout should have strong volume.</dd>
+      <dt>Stop</dt>
+      <dd>Where to put your stop loss: just below the recent swing low (last ~15 days). Protects your capital. Never trade without it.</dd>
+      <dt>Risk/share</dt>
+      <dd>How much you lose per share if stop is hit: Entry minus Stop. Used to size your position (1% capital ÷ this = shares).</dd>
+      <dt>Target (2R)</dt>
+      <dd>Profit target: Entry + 2 × risk per share. We aim for 2× our risk (2R).</dd>
+      <dt>Decision</dt>
+      <dd>What to do: <strong>BUY</strong> = all conditions met (trend, fresh breakout, volume, not extended). <strong>WATCH</strong> = trend ok, near resistance, no breakout yet. <strong>SKIP</strong> = don’t trade (below MA50, no trend, overextended, or no volume).</dd>
+      <dt>Score</dt>
+      <dd>Just for ranking. Higher = more boxes ticked. The real action is in <strong>Decision</strong>.</dd>
+    </dl>
+  </details>
+
+  <div class="panel">
+    <label for="symbols">Symbols (one per line or comma-separated)</label>
+    <textarea id="symbols" placeholder="SAMP.N0000&#10;JKH.N0000&#10;LIOC.N0000">SAMP.N0000
+JKH.N0000
+LIOC.N0000
+NHL.N0000
+LMF.N0000</textarea>
+    <div class="row" style="margin-top: 0.75rem;">
+      <button type="button" id="run">Run scan</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    const CFG = {
+      maLen: 50,
+      maSlopeDays: 5,
+      resistanceLookback: 60,
+      nearResPct: 1.5,
+      volAvgDays: 20,
+      volSpikeMult: 1.5,
+      delayMs: 450,
+      chartId: "1",
+      period: "D",
+      breakoutLookbackDays: 3,   // breakout must happen in last 3 candles
+      maxExtendedPct: 12,        // reject if price too far above MA50
+    };
+
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    // Use local proxy when on localhost to avoid CORS (run: python3 serve-scanner.py)
+    const CHART_API = (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost")
+      ? "/api/chartData"
+      : "https://www.cse.lk/api/chartData";
+
+    async function cseChartData(symbol) {
+      const res = await fetch(CHART_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          symbol: symbol,
+          chartId: CFG.chartId,
+          period: CFG.period,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${symbol}`);
+      const json = await res.json();
+      return json?.data ?? [];
+    }
+
+    function toNum(x) {
+      const n = Number(x);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
+    function sma(arr) {
+      if (!arr.length) return NaN;
+      const s = arr.reduce((a, b) => a + b, 0);
+      return s / arr.length;
+    }
+
+    function calcMA(seriesCloses, len, endIdxInclusive) {
+      const start = endIdxInclusive - len + 1;
+      if (start < 0) return NaN;
+      const window = seriesCloses.slice(start, endIdxInclusive + 1);
+      if (window.some(v => !Number.isFinite(v))) return NaN;
+      return sma(window);
+    }
+
+    function resistanceHigh(highs, lookback) {
+      const slice = highs.slice(-lookback);
+      const valid = slice.filter(Number.isFinite);
+      return valid.length ? Math.max(...valid) : NaN;
+    }
+
+    function avgVolume(vols, days) {
+      const slice = vols.slice(-days).filter(Number.isFinite);
+      return slice.length ? sma(slice) : NaN;
+    }
+
+    function swingLow(lows, lookback = 15) {
+      const slice = lows.slice(-lookback).filter(Number.isFinite);
+      return slice.length ? Math.min(...slice) : NaN;
+    }
+
+    function pctDiff(a, b) {
+      if (!b || !Number.isFinite(b)) return NaN;
+      return ((a - b) / b) * 100;
+    }
+
+    function wasBreakoutRecently(closes, highs, lookbackRes = 60, withinDays = 3) {
+      const n = closes.length;
+      if (n < lookbackRes + withinDays + 2) return false;
+
+      for (let i = n - withinDays; i < n; i++) {
+        const resHighs = highs.slice(Math.max(0, i - lookbackRes), i); // exclude day i
+        const res = Math.max(...resHighs.filter(Number.isFinite));
+        if (Number.isFinite(res) && Number.isFinite(closes[i]) && closes[i] > res) return true;
+      }
+      return false;
+    }
+
+    function parseSymbols(text) {
+      return text
+        .split(/[\n,]+/)
+        .map(s => s.trim().toUpperCase())
+        .filter(Boolean);
+    }
+
+    async function scanOne(symbol) {
+      const rows = await cseChartData(symbol);
+      if (!rows.length) return { symbol, error: "No data" };
+
+      const closes = rows.map(r => toNum(r.close));
+      const highs  = rows.map(r => toNum(r.high));
+      const lows   = rows.map(r => toNum(r.low));
+      const vols   = rows.map(r => toNum(r.volume));
+
+      const lastIdx = rows.length - 1;
+      const lastClose = closes[lastIdx];
+      const lastVol = vols[lastIdx];
+
+      const ma50 = calcMA(closes, CFG.maLen, lastIdx);
+      const maPrev = calcMA(closes, CFG.maLen, lastIdx - CFG.maSlopeDays);
+
+      const priceAboveMA = lastClose > ma50;
+      const maRising = ma50 > maPrev;
+
+      // Resistance should NOT include today's candle
+      const highsForRes = highs.slice(-(CFG.resistanceLookback + 1), -1);
+      const res = resistanceHigh(highsForRes, CFG.resistanceLookback);
+
+      // Breakout trigger (close above resistance within last N candles; res excludes each candidate day)
+      const freshBreakout = wasBreakoutRecently(closes, highs, CFG.resistanceLookback, CFG.breakoutLookbackDays);
+      const breakout = freshBreakout;
+      const nearRes = Number.isFinite(res) && Math.abs(pctDiff(lastClose, res)) <= CFG.nearResPct;
+
+      // Reject if price too far above MA50 (extended)
+      const extendedPct = Number.isFinite(ma50) ? ((lastClose - ma50) / ma50) * 100 : NaN;
+      const notExtended = Number.isFinite(extendedPct) && extendedPct <= CFG.maxExtendedPct;
+
+      // Volume baseline should NOT include today's candle
+      const volsForAvg = vols.slice(-(CFG.volAvgDays + 1), -1);
+      const avgVol20 = avgVolume(volsForAvg, CFG.volAvgDays);
+      const volSpike = Number.isFinite(avgVol20) && lastVol > avgVol20 * CFG.volSpikeMult;
+
+      const sl = swingLow(lows, 15);
+      const stop = Number.isFinite(sl) ? sl - 0.1 : NaN; // buffer; tweak if needed
+      const riskPerShare = (Number.isFinite(stop) ? (lastClose - stop) : NaN);
+      const target2R = (Number.isFinite(riskPerShare) ? (lastClose + 2 * riskPerShare) : NaN);
+
+      // Decision label (your real rule)
+      let label = "SKIP";
+      if (priceAboveMA && maRising && nearRes) label = "WATCH";
+      if (priceAboveMA && maRising && freshBreakout && volSpike && notExtended) label = "BUY";
+      if (!notExtended) label = "SKIP";
+
+      let score = 0;
+      if (priceAboveMA) score += 2;
+      if (maRising) score += 2;
+      if (nearRes) score += 1;
+      if (breakout) score += 2;
+      if (volSpike) score += 1;
+      if (label === "BUY") score += 3;
+
+      return {
+        symbol,
+        lastClose,
+        ma50,
+        maRising,
+        priceAboveMA,
+        resistance: res,
+        breakout,
+        freshBreakout,
+        nearRes,
+        extendedPct,
+        notExtended,
+        lastVol,
+        avgVol20,
+        volSpike,
+        stop,
+        riskPerShare,
+        target2R,
+        label,
+        score,
+      };
+    }
+
+    function fmt(v) {
+      if (v == null || Number.isNaN(v)) return "—";
+      if (typeof v === "number" && Number.isFinite(v)) return v.toFixed(2);
+      return String(v);
+    }
+
+    async function runScan() {
+      const ta = document.getElementById("symbols");
+      const status = document.getElementById("status");
+      const results = document.getElementById("results");
+      const btn = document.getElementById("run");
+
+      const symbols = parseSymbols(ta.value);
+      if (!symbols.length) {
+        status.textContent = "Enter at least one symbol.";
+        return;
+      }
+
+      btn.disabled = true;
+      status.textContent = "Scanning…";
+      status.className = "loading";
+      results.innerHTML = "";
+
+      const out = await Promise.all(symbols.map(async (s) => {
+        try {
+          return await scanOne(s);
+        } catch (e) {
+          return { symbol: s, error: String(e?.message ?? e) };
+        }
+      }));
+
+      const ranked = out.filter(x => !x.error).sort((a, b) => b.score - a.score);
+      const errs = out.filter(x => x.error);
+
+      status.textContent = `Done. ${ranked.length} scanned, ${errs.length} errors.`;
+      status.className = "";
+
+      if (ranked.length) {
+        const table = document.createElement("div");
+        table.className = "panel table-wrap";
+        const labelOrder = { BUY: 0, WATCH: 1, SKIP: 2 };
+        const sorted = [...ranked].sort((a, b) => (labelOrder[a.label] ?? 2) - (labelOrder[b.label] ?? 2) || b.score - a.score);
+        table.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Close</th>
+                <th>MA50</th>
+                <th>Above MA</th>
+                <th>MA up</th>
+                <th>Resistance</th>
+                <th>Breakout</th>
+                <th>Near res</th>
+                <th>Vol spike</th>
+                <th>Stop</th>
+                <th>Risk/share</th>
+                <th>Target (2R)</th>
+                <th>Decision</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sorted.map(x => `
+                <tr>
+                  <td>${x.symbol}</td>
+                  <td>${fmt(x.lastClose)}</td>
+                  <td>${fmt(x.ma50)}</td>
+                  <td class="${x.priceAboveMA ? "yes" : "no"}">${x.priceAboveMA ? "Yes" : "No"}</td>
+                  <td class="${x.maRising ? "yes" : "no"}">${x.maRising ? "Yes" : "No"}</td>
+                  <td>${fmt(x.resistance)}</td>
+                  <td class="${x.breakout ? "yes" : "no"}">${x.breakout ? "Yes" : "No"}</td>
+                  <td class="${x.nearRes ? "yes" : "no"}">${x.nearRes ? "Yes" : "No"}</td>
+                  <td class="${x.volSpike ? "yes" : "no"}">${x.volSpike ? "Yes" : "No"}</td>
+                  <td>${fmt(x.stop)}</td>
+                  <td>${fmt(x.riskPerShare)}</td>
+                  <td>${fmt(x.target2R)}</td>
+                  <td class="${x.label === "BUY" ? "yes" : (x.label === "WATCH" ? "tip" : "no")}">${x.label}</td>
+                  <td class="score">${x.score}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+        results.appendChild(table);
+      }
+
+      if (errs.length) {
+        const errDiv = document.createElement("div");
+        errDiv.className = "panel err";
+        errDiv.innerHTML = "<strong>Errors</strong><pre>" + errs.map(e => e.symbol + ": " + e.error).join("\n") + "</pre>";
+        results.appendChild(errDiv);
+      }
+
+      btn.disabled = false;
+    }
+
+    document.getElementById("run").addEventListener("click", runScan);
+  </script>
+</body>
+</html>
