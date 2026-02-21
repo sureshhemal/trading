@@ -10,6 +10,7 @@ Then open: http://127.0.0.1:8765/
 import urllib.request
 import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs
 import json
 import os
@@ -107,8 +108,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(resp_body)
 
 
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """Handle each request in a new thread so Promise.all() fetches run in parallel."""
+    pass
+
+
 def main():
-    server = HTTPServer(("127.0.0.1", PORT), Handler)
+    server = ThreadedHTTPServer(("127.0.0.1", PORT), Handler)
     print("CSE Scanner server: http://127.0.0.1:%s/" % PORT)
     print("Open that URL in your browser to avoid CORS.")
     server.serve_forever()

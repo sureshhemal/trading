@@ -4,6 +4,8 @@
 
 **Vercel:** Deploy with [Vercel](https://vercel.com) (connect the repo or `vercel` CLI). The `api/chartData` serverless function proxies CSE so the scanner works in the browser. Root `/` serves the scanner.
 
+**CSE symbol list:** [docs/cse-symbols.json](docs/cse-symbols.json) (symbol + name) and [docs/cse-symbols.txt](docs/cse-symbols.txt) (one symbol per line, 291 stocks). Source: CSE API `tradeSummary`.
+
 ---
 
 # CSE MA50 Breakout System — Transcript
